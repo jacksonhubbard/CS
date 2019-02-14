@@ -1,0 +1,145 @@
+This is the analysis for Markov Part 2, Fall 2018
+
+Jackson Hubbard jwh62
+Answer the questions from the assignment 
+that are reproduced below
+
+(1) Determine (from running Benchmark.java) how long it takes for 
+BaseMarkov to generate 2,000, 4,000, 8,000, 16,000, and 32,000 
+random characters using the default file and an order 5 Markov Model. 
+Include these timings in your report. 
+
+time	source	#chars
+0.013	496768	100
+0.028	496768	200
+0.054	496768	400
+0.105	496768	800
+0.203	496768	1600
+0.402	496768	3200
+0.813	496768	6400
+1.716	496768	12800
+
+The program also generates 4,096 characters using texts that increase in 
+size from 496,768 characters to 4,967,680 characters (10 times the number).  
+Do you the timings support the O(NT) analysis for BaseMarkov?
+0.522	496768	4096
+1.062	993536	4096
+1.580	1490304	4096
+2.159	1987072	4096
+2.865	2483840	4096
+3.297	2980608	4096
+3.830	3477376	4096
+4.365	3974144	4096
+4.967	4470912	4096
+5.544	4967680	4096
+
+Yes these numbers do support the O(NT) analysis for BaseMarkov. This is because 
+when you double the size of the training text (N), it results in the doubling in the 
+amount of time. This can be seen most clearly by looking at the first and second
+lines of output as the source size goes from 496768 to 993536 while the number of 
+random characters generated (T) stays the same and the time approximately doubles.
+
+
+
+
+(2) Determine (from running Benchmark.java) how long it takes for 
+EfficientMarkov to generate 2,000, 4,000, 8,000, 16,000, and 32,000 
+random characters using the default file and an order 5 Markov Model. 
+Include these timings in your report. 
+
+time	source	#chars
+0.164	496768	100
+0.203	496768	200
+0.157	496768	400
+0.179	496768	800
+0.138	496768	1600
+0.118	496768	3200
+0.118	496768	6400
+0.142	496768	12800
+
+
+
+The program also generates 4,096 characters using texts that increase in 
+size from 496,768 characters to 4,967,680 characters (10 times the number).  
+Do you the timings support the O(N+T) analysis for EfficientMarkov?
+		   
+0.117	496768	4096
+0.245	993536	4096
+0.369	1490304	4096
+0.530	1987072	4096
+0.677	2483840	4096
+1.441	2980608	4096
+2.309	3477376	4096
+2.236	3974144	4096
+2.811	4470912	4096
+3.573	4967680	4096
+
+It is clear that this performs much quicker than BaseMarkov. The time grows at a rate
+slower than BaseMarkov so it must have an O complexity of less than O(N*T). However, as N
+becomes larger the growth rate is slightly smaller since the T value of 4096 is a smaller percent
+of the change. Thus, O(N+T) makes sense for EfficientMarkov
+
+(3)The tests in the class Benchmark use an order-5 Markov Model. 
+Run tests that you think are appropriate to determine if the order of the 
+Markov Model has a significant impact on the running time for BaseMarkov. 
+Explain your reasoning.
+
+To do this I will look at the outputted times for running Benchmark for BaseMarkov
+for an order of 2 and an order of 7. Looking at the times we see that it takes longer
+when the order is smaller. This is because it takes a longer time to get to the end of 
+the for loop. The for loop stops when it gets to an index where after adding the order, 
+there is no longer a next term (it does this once and the next is PSEUDO_EOS but then 
+it exits the loop. Thus, if the order was 7 the for loop would exit on the seventh to 
+last element since iterating one more time would result in not having a next element. 
+However, for smaller order's it can keep iterating several more times. These extra iterations
+result in a slower time. 
+
+order = 2
+time	source	#chars
+0.027	496768	100
+0.067	496768	200
+0.115	496768	400
+0.226	496768	800
+0.452	496768	1600
+0.892	496768	3200
+1.791	496768	6400
+3.541	496768	12800
+
+1.169	496768	4096
+2.278	993536	4096
+3.419	1490304	4096
+4.644	1987072	4096
+5.826	2483840	4096
+7.348	2980608	4096
+8.523	3477376	4096
+9.545	3974144	4096
+14.910	4470912	4096
+20.282	4967680	4096
+
+order = 7
+time	source	#chars
+0.012	496768	100
+0.026	496768	200
+0.049	496768	400
+0.098	496768	800
+0.195	496768	1600
+0.400	496768	3200
+0.842	496768	6400
+1.807	496768	12800
+
+0.587	496768	4096
+1.116	993536	4096
+1.495	1490304	4096
+2.036	1987072	4096
+2.663	2483840	4096
+3.490	2980608	4096
+3.747	3477376	4096
+4.378	3974144	4096
+5.027	4470912	4096
+5.341	4967680	4096
+
+
+
+
+
+
