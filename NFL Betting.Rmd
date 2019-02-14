@@ -1,0 +1,501 @@
+---
+title: "NFL final"
+author: "jacksonhubbard"
+date: "12/2/2018"
+output: pdf_document
+---
+
+## Preliminary Data Manipulations
+top5 ATS taken from (since 2015)- https://www.teamrankings.com/nfl/trends/ats_trends/?range=yearly_since_2015
+```{r}
+setwd("~/Assignments")
+nfl <- read_excel("NFL Betting.xls")
+
+# dataset to be used to test model
+nfl.2018 <- nfl %>% filter(schedule_season == 2018)
+nfl.2017 <- nfl %>% filter(schedule_season == 2017)
+
+# filtering dataset to fit current state of game
+nfl <- nfl %>% filter(schedule_season > 2002)
+# 2018 season not over yet so delete
+nfl <- nfl %>% filter(schedule_season < 2017)
+
+
+# delete weather_humidity variable as no data was entered
+nfl$weather_humidity <- NULL
+
+# indicator on if game is playoff game
+nfl <- nfl %>% mutate(playoffGame = case_when(schedule_week %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 1,
+                                              ! schedule_week  %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 0 ))
+
+
+# delete games with spread = 0.0
+nfl <- nfl %>% filter(spread_favorite < 0.0)
+
+
+
+# calculating if total score was over/under predicted total by Vegas
+nfl <- nfl %>% mutate(sum = score_away + score_home )
+nfl <- nfl %>% mutate(over = case_when(over_under_line < sum ~ 1,
+                                      over_under_line >= sum ~ 0) )
+
+# 1 = rainy weather, 0= good weather
+nfl <- nfl %>% mutate(precipitation = case_when(weather_detail == "Rain" ~ 1,
+                                                weather_detail == "Snow" ~ 1,
+                                                weather_detail == "Fog" ~ 1,
+                                                weather_detail == "Rain | Fog" ~1,
+                                                weather_detail == "Snow | Fog" ~ 1,
+                                                weather_detail == "Snow | Freezing Rain" ~ 1,
+                                                weather_detail == "DOME" ~ 0,
+                                                is.na(weather_detail) ~ 0) )
+# making team names consistent
+nfl <- nfl %>% mutate(favorite = case_when(
+                                          team_favorite_id == "ARI" ~	"Arizona Cardinals",
+                                          team_favorite_id == "ATL" ~	"Atlanta Falcons",
+                                          team_favorite_id == "BAL" ~	"Baltimore Ravens",
+                                          team_favorite_id == "BUF" ~	"Buffalo Bills",
+                                          team_favorite_id == "CAR" ~	"Carolina Panthers",
+                                          team_favorite_id == "CHI" ~	"Chicago Bears",
+                                          team_favorite_id == "CIN" ~	"Cincinnati Bengals",
+                                          team_favorite_id == "CLE" ~	"Cleveland Browns",
+                                          team_favorite_id == "DAL" ~	"Dallas Cowboys",
+                                          team_favorite_id == "DEN" ~	"Denver Broncos",
+                                          team_favorite_id == "DET" ~	"Detroit Lions",
+                                          team_favorite_id == "GB" ~	"Green Bay Packers",
+                                          team_favorite_id == "HOU" ~	"Houston Texans",
+                                          team_favorite_id == "IND" ~	"Indianapolis Colts",
+                                          team_favorite_id == "JAX" ~	"Jacksonville Jaguars",
+                                          team_favorite_id == "KC" ~	"Kansas City Chiefs",
+                                          team_favorite_id == "LAC" ~	"Los Angeles Chargers",
+                                          team_favorite_id == "LAR" ~	"Los Angeles Rams",
+                                          team_favorite_id == "MIA" ~	"Miami Dolphins",
+                                          team_favorite_id == "MIN" ~	"Minnesota Vikings",
+                                          team_favorite_id == "NE" ~	"New England Patriots",
+                                          team_favorite_id == "NO" ~	"New Orleans Saints",
+                                          team_favorite_id == "NYG" ~	"New York Giants",
+                                          team_favorite_id == "NYJ" ~	"New York Jets",
+                                          team_favorite_id == "OAK" ~	"Oakland Raiders",
+                                          team_favorite_id == "PHI" ~	"Philadelphia Eagles",
+                                          team_favorite_id == "PIT" ~	"Pittsburgh Steelers",
+                                          team_favorite_id == "SEA" ~	"Seattle Seahawks",
+                                          team_favorite_id == "SF" ~	"San Francisco 49ers",
+                                          team_favorite_id == "TB" ~	"Tampa Bay Buccaneers",
+                                          team_favorite_id == "TEN" ~	"Tennessee Titans",
+                                          team_favorite_id == "WAS" ~	"Washington Redskins" ))
+
+# correcting for teams relocating
+nfl$team_home[nfl$team_home == "St. Louis Rams"] <- "Los Angeles Rams"
+nfl$team_away[nfl$team_away == "St. Louis Rams"] <- "Los Angeles Rams"
+
+nfl$team_home[nfl$team_home == "San Diego Chargers"] <- "Los Angeles Chargers"
+nfl$team_away[nfl$team_away == "San Diego Chargers"] <- "Los Angeles Chargers"
+
+
+# indicator variables for if home/away team is underdog/favorite
+nfl <- nfl %>% mutate (underdog = if_else(team_home == favorite, team_away, team_home))
+
+nfl <- nfl %>% mutate (favHome = case_when(favorite == team_home ~ 1,
+                                           favorite == team_away ~ 0))
+
+# making spreads more easy to understand by making positive
+nfl <- nfl %>% mutate (spread_vegas = spread_favorite*-1)
+
+# calculating actual difference in scores
+nfl <- nfl %>% mutate (spread_actual = case_when(favHome == 1 ~ (score_home - score_away),
+                                                 favHome == 0 ~ (score_away - score_home)))
+
+# indicator if underdog covered the spread 
+nfl <- nfl %>% mutate (UNDERDOGcovered = case_when(spread_actual < spread_vegas ~ 1, 
+                                           spread_actual >= spread_vegas ~ 0))
+
+
+# from 2003 on
+nfl <- nfl %>% mutate (fav_best3 = if_else(favorite %in% c( "New England Patriots", "Indianapolis Colts", "Gren Bay Packers"), 1, 0))
+
+nfl <- nfl %>% mutate (underdog_best3 = if_else(underdog %in% c("New England Patriots", "Indianapolis Colts", "Gren Bay Packers"), 1, 0))
+
+nfl <- nfl %>% mutate (fav_worst3 = if_else(favorite %in% c("Cleveland Browns", "Los Angeles Rams", "Oakland Raiders" ), 1, 0))
+
+nfl <- nfl %>% mutate (underdog_worst3 = if_else(underdog %in% c("Cleveland Browns", "Los Angeles Rams", "Oakland Raiders" ), 1, 0))
+
+
+# division game
+nfl <- nfl %>% mutate(division_game = case_when(
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 1, 
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & ! team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 0,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 1,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & ! team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 0,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 1,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & ! team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 0,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 1,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & ! team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 0,
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 1, 
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & ! team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 0,
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 1, 
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & ! team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 0, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 1, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & ! team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 0,
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 1, 
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & ! team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 0))
+
+# indicator for if game was played in freezing weather (<32 F)
+nfl <- nfl %>% mutate(under32 = case_when(weather_temperature <= 32 ~ 1, 
+                                            weather_temperature> 32 ~ 0))
+
+# getting rid of push games since you get money back
+ nfl<- nfl %>% filter(spread_vegas != spread_actual)
+```
+
+
+2018 test data
+```{r}
+nfl.2018 <- nfl.2018 %>% filter(schedule_week < 9)
+
+
+# delete weather_humidity variable as no data was entered
+nfl.2018$weather_humidity <- NULL
+
+# indicator on if game is playoff game
+nfl.2018 <- nfl.2018 %>% mutate(playoffGame = case_when(schedule_week %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 1,
+                                              ! schedule_week  %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 0 ))
+
+
+# delete games with spread = 0.0
+nfl.2018 <- nfl.2018 %>% filter(spread_favorite < 0.0)
+
+
+
+# calculating if total score was over/under predicted total by Vegas
+nfl.2018 <- nfl.2018 %>% mutate(sum = score_away + score_home )
+nfl.2018 <- nfl.2018 %>% mutate(over = case_when(over_under_line < sum ~ 1,
+                                      over_under_line >= sum ~ 0) )
+
+# 1 = rainy weather, 0= good weather
+nfl.2018 <- nfl.2018 %>% mutate(precipitation = case_when(weather_detail == "Rain" ~ 1,
+                                                weather_detail == "Snow" ~ 1,
+                                                weather_detail == "Fog" ~ 1,
+                                                weather_detail == "Rain | Fog" ~1,
+                                                weather_detail == "Snow | Fog" ~ 1,
+                                                weather_detail == "Snow | Freezing Rain" ~ 1,
+                                                weather_detail == "DOME" ~ 0,
+                                                is.na(weather_detail) ~ 0) )
+# making team names consistent
+nfl.2018 <- nfl.2018 %>% mutate(favorite = case_when(
+                                          team_favorite_id == "ARI" ~	"Arizona Cardinals",
+                                          team_favorite_id == "ATL" ~	"Atlanta Falcons",
+                                          team_favorite_id == "BAL" ~	"Baltimore Ravens",
+                                          team_favorite_id == "BUF" ~	"Buffalo Bills",
+                                          team_favorite_id == "CAR" ~	"Carolina Panthers",
+                                          team_favorite_id == "CHI" ~	"Chicago Bears",
+                                          team_favorite_id == "CIN" ~	"Cincinnati Bengals",
+                                          team_favorite_id == "CLE" ~	"Cleveland Browns",
+                                          team_favorite_id == "DAL" ~	"Dallas Cowboys",
+                                          team_favorite_id == "DEN" ~	"Denver Broncos",
+                                          team_favorite_id == "DET" ~	"Detroit Lions",
+                                          team_favorite_id == "GB" ~	"Green Bay Packers",
+                                          team_favorite_id == "HOU" ~	"Houston Texans",
+                                          team_favorite_id == "IND" ~	"Indianapolis Colts",
+                                          team_favorite_id == "JAX" ~	"Jacksonville Jaguars",
+                                          team_favorite_id == "KC" ~	"Kansas City Chiefs",
+                                          team_favorite_id == "LAC" ~	"Los Angeles Chargers",
+                                          team_favorite_id == "LAR" ~	"Los Angeles Rams",
+                                          team_favorite_id == "MIA" ~	"Miami Dolphins",
+                                          team_favorite_id == "MIN" ~	"Minnesota Vikings",
+                                          team_favorite_id == "NE" ~	"New England Patriots",
+                                          team_favorite_id == "NO" ~	"New Orleans Saints",
+                                          team_favorite_id == "NYG" ~	"New York Giants",
+                                          team_favorite_id == "NYJ" ~	"New York Jets",
+                                          team_favorite_id == "OAK" ~	"Oakland Raiders",
+                                          team_favorite_id == "PHI" ~	"Philadelphia Eagles",
+                                          team_favorite_id == "PIT" ~	"Pittsburgh Steelers",
+                                          team_favorite_id == "SEA" ~	"Seattle Seahawks",
+                                          team_favorite_id == "SF" ~	"San Francisco 49ers",
+                                          team_favorite_id == "TB" ~	"Tampa Bay Buccaneers",
+                                          team_favorite_id == "TEN" ~	"Tennessee Titans",
+                                          team_favorite_id == "WAS" ~	"Washington Redskins" ))
+
+# correcting for teams relocating
+nfl.2018$team_home[nfl.2018$team_home == "St. Louis Rams"] <- "Los Angeles Rams"
+nfl.2018$team_away[nfl.2018$team_away == "St. Louis Rams"] <- "Los Angeles Rams"
+
+nfl.2018$team_home[nfl.2018$team_home == "San Diego Chargers"] <- "Los Angeles Chargers"
+nfl.2018$team_away[nfl.2018$team_away == "San Diego Chargers"] <- "Los Angeles Chargers"
+
+
+# indicator variables for if home/away team is underdog/favorite
+nfl.2018 <- nfl.2018 %>% mutate (underdog = if_else(team_home == favorite, team_away, team_home))
+
+nfl.2018 <- nfl.2018 %>% mutate (favHome = case_when(favorite == team_home ~ 1,
+                                           favorite == team_away ~ 0))
+
+# making spreads more easy to understand by making positive
+nfl.2018 <- nfl.2018 %>% mutate (spread_vegas = spread_favorite*-1)
+
+# calculating actual difference in scores
+nfl.2018 <- nfl.2018 %>% mutate (spread_actual = case_when(favHome == 1 ~ (score_home - score_away),
+                                                 favHome == 0 ~ (score_away - score_home)))
+
+# indicator if underdog covered the spread 
+nfl.2018 <- nfl.2018 %>% mutate (UNDERDOGcovered = case_when(spread_actual < spread_vegas ~ 1, 
+                                           spread_actual >= spread_vegas ~ 0))
+
+
+#from 2003 on
+
+nfl.2018 <- nfl.2018 %>% mutate (fav_best3 = if_else(favorite %in% c( "Kansas City Chiefs", "New Orleans Saints", "New England Patriots", "Chicago Bears", "Minnesota Vikings"), 1, 0))
+
+nfl.2018 <- nfl.2018 %>% mutate (underdog_best3 = if_else(underdog %in% c("Kansas City Chiefs", "New Orleans Saints", "New England Patriots", "Chicago Bears", "Minnesota Vikings"), 1, 0))
+
+nfl.2018 <- nfl.2018 %>% mutate (fav_worst3 = if_else(favorite %in% c("Atlanta Falcons", "Denver Broncos", "Oakland Raiders", "Cleveland Browns", "Tampa Bay Buccaneers"), 1, 0))
+
+nfl.2018 <- nfl.2018 %>% mutate (underdog_worst3 = if_else(underdog %in% c("Atlanta Falcons", "Denver Broncos", "Oakland Raiders", "Cleveland Browns", "Tampa Bay Buccaneers"), 1, 0))
+
+
+
+
+# division game
+nfl.2018 <- nfl.2018 %>% mutate(division_game = case_when(
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 1, 
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & ! team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 0,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 1,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & ! team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 0,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 1,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & ! team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 0,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 1,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & ! team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 0,
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 1, 
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & ! team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 0,
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 1, 
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & ! team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 0, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 1, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & ! team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 0,
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 1, 
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & ! team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 0))
+
+# indicator for if freezing weather
+nfl.2018 <- nfl.2018 %>% mutate(under32 = case_when(weather_temperature <= 32 ~ 1, 
+                                            weather_temperature> 32 ~ 0))
+
+# get rid of push games since you get  $ back
+ nfl.2018<- nfl.2018 %>% filter(spread_vegas != spread_actual)
+
+```
+
+2017 test data
+```{r}
+
+
+# delete weather_humidity variable as no data was entered
+nfl.2017$weather_humidity <- NULL
+
+# indicator on if game is playoff game
+nfl.2017 <- nfl.2017 %>% mutate(playoffGame = case_when(schedule_week %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 1,
+                                              ! schedule_week  %in% c("WildCard", "Wildcard", "Division", "Conference","SuperBowl", "Superbowl") ~ 0 ))
+
+
+# delete games with spread = 0.0
+nfl.2017 <- nfl.2017 %>% filter(spread_favorite < 0.0)
+
+
+
+# calculating if total score was over/under predicted total by Vegas
+nfl.2017 <- nfl.2017 %>% mutate(sum = score_away + score_home )
+nfl.2017 <- nfl.2017 %>% mutate(over = case_when(over_under_line < sum ~ 1,
+                                      over_under_line >= sum ~ 0) )
+
+# 1 = rainy weather, 0= good weather
+nfl.2017 <- nfl.2017 %>% mutate(precipitation = case_when(weather_detail == "Rain" ~ 1,
+                                                weather_detail == "Snow" ~ 1,
+                                                weather_detail == "Fog" ~ 1,
+                                                weather_detail == "Rain | Fog" ~1,
+                                                weather_detail == "Snow | Fog" ~ 1,
+                                                weather_detail == "Snow | Freezing Rain" ~ 1,
+                                                weather_detail == "DOME" ~ 0,
+                                                is.na(weather_detail) ~ 0) )
+# making team names consistent
+nfl.2017 <- nfl.2017 %>% mutate(favorite = case_when(
+                                          team_favorite_id == "ARI" ~	"Arizona Cardinals",
+                                          team_favorite_id == "ATL" ~	"Atlanta Falcons",
+                                          team_favorite_id == "BAL" ~	"Baltimore Ravens",
+                                          team_favorite_id == "BUF" ~	"Buffalo Bills",
+                                          team_favorite_id == "CAR" ~	"Carolina Panthers",
+                                          team_favorite_id == "CHI" ~	"Chicago Bears",
+                                          team_favorite_id == "CIN" ~	"Cincinnati Bengals",
+                                          team_favorite_id == "CLE" ~	"Cleveland Browns",
+                                          team_favorite_id == "DAL" ~	"Dallas Cowboys",
+                                          team_favorite_id == "DEN" ~	"Denver Broncos",
+                                          team_favorite_id == "DET" ~	"Detroit Lions",
+                                          team_favorite_id == "GB" ~	"Green Bay Packers",
+                                          team_favorite_id == "HOU" ~	"Houston Texans",
+                                          team_favorite_id == "IND" ~	"Indianapolis Colts",
+                                          team_favorite_id == "JAX" ~	"Jacksonville Jaguars",
+                                          team_favorite_id == "KC" ~	"Kansas City Chiefs",
+                                          team_favorite_id == "LAC" ~	"Los Angeles Chargers",
+                                          team_favorite_id == "LAR" ~	"Los Angeles Rams",
+                                          team_favorite_id == "MIA" ~	"Miami Dolphins",
+                                          team_favorite_id == "MIN" ~	"Minnesota Vikings",
+                                          team_favorite_id == "NE" ~	"New England Patriots",
+                                          team_favorite_id == "NO" ~	"New Orleans Saints",
+                                          team_favorite_id == "NYG" ~	"New York Giants",
+                                          team_favorite_id == "NYJ" ~	"New York Jets",
+                                          team_favorite_id == "OAK" ~	"Oakland Raiders",
+                                          team_favorite_id == "PHI" ~	"Philadelphia Eagles",
+                                          team_favorite_id == "PIT" ~	"Pittsburgh Steelers",
+                                          team_favorite_id == "SEA" ~	"Seattle Seahawks",
+                                          team_favorite_id == "SF" ~	"San Francisco 49ers",
+                                          team_favorite_id == "TB" ~	"Tampa Bay Buccaneers",
+                                          team_favorite_id == "TEN" ~	"Tennessee Titans",
+                                          team_favorite_id == "WAS" ~	"Washington Redskins" ))
+
+# correcting for teams relocating
+nfl.2017$team_home[nfl.2017$team_home == "St. Louis Rams"] <- "Los Angeles Rams"
+nfl.2017$team_away[nfl.2017$team_away == "St. Louis Rams"] <- "Los Angeles Rams"
+
+nfl.2017$team_home[nfl.2017$team_home == "San Diego Chargers"] <- "Los Angeles Chargers"
+nfl.2017$team_away[nfl.2017$team_away == "San Diego Chargers"] <- "Los Angeles Chargers"
+
+
+# indicator variables for if home/away team is underdog/favorite
+nfl.2017 <- nfl.2017 %>% mutate (underdog = if_else(team_home == favorite, team_away, team_home))
+
+nfl.2017 <- nfl.2017 %>% mutate (favHome = case_when(favorite == team_home ~ 1,
+                                           favorite == team_away ~ 0))
+
+# making spreads more easy to understand by making positive
+nfl.2017 <- nfl.2017 %>% mutate (spread_vegas = spread_favorite*-1)
+
+# calculating actual difference in scores
+nfl.2017 <- nfl.2017 %>% mutate (spread_actual = case_when(favHome == 1 ~ (score_home - score_away),
+                                                 favHome == 0 ~ (score_away - score_home)))
+
+# indicator if underdog covered the spread 
+nfl.2017 <- nfl.2017 %>% mutate (UNDERDOGcovered = case_when(spread_actual < spread_vegas ~ 1, 
+                                           spread_actual >= spread_vegas ~ 0))
+
+
+# using top5 from 2017 on
+nfl.2017 <- nfl.2017 %>% mutate (fav_best3 = if_else(favorite %in% c( "Kansas City Chiefs", "New Orleans Saints", "New England Patriots", "Chicago Bears", "Minnesota Vikings"), 1, 0))
+
+nfl.2017 <- nfl.2017 %>% mutate (underdog_best3 = if_else(underdog %in% c("Kansas City Chiefs", "New Orleans Saints", "New England Patriots", "Chicago Bears", "Minnesota Vikings"), 1, 0))
+
+nfl.2017 <- nfl.2017 %>% mutate (fav_worst3 = if_else(favorite %in% c("Atlanta Falcons", "Denver Broncos", "Oakland Raiders", "Cleveland Browns", "Tampa Bay Buccaneers"), 1, 0))
+
+nfl.2017 <- nfl.2017 %>% mutate (underdog_worst3 = if_else(underdog %in% c("Atlanta Falcons", "Denver Broncos", "Oakland Raiders", "Cleveland Browns", "Tampa Bay Buccaneers"), 1, 0))
+
+
+# division game indicator
+nfl.2017 <- nfl.2017 %>% mutate(division_game = case_when(
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 1, 
+team_home %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") & ! team_away %in% c("New England Patriots", "Miami Dolphins", "Buffalo Bills", "New York Jets") ~ 0,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 1,
+team_home %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") & ! team_away %in% c("Pittsburgh Steelers", "Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns") ~ 0,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 1,
+team_home %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") & ! team_away %in% c("Houston Texans", "Indianapolis Colts", "Tennessee Titans", "Jacksonville Jaguars") ~ 0,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 1,
+team_home %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") & ! team_away %in% c("Kansas City Chiefs", "Los Angeles Chargers", "Denver Broncos", "Oakland Raiders") ~ 0,
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 1, 
+team_home %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") & ! team_away %in% c("Washington Redskins", "Dallas Cowboys", "New York Giants", "Philadelphia Eagles") ~ 0,
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 1, 
+team_home %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") & ! team_away %in% c("Chicago Bears", "Minnesota Vikings", "Green Bay Packers", "Detroit Lions") ~ 0, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 1, 
+team_home %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") & ! team_away %in% c("New Orleans Saints", "Carolina Panthers", "Atlanta Falcons", "Tampa Bay Buccaneers") ~ 0,
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 1, 
+team_home %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") & ! team_away %in% c("Los Angeles Rams", "Seattle Seahawks", "Arizona Cardinals", "San Francisco 49ers") ~ 0))
+
+# indicator for freezing conditions
+nfl.2017 <- nfl.2017 %>% mutate(under32 = case_when(weather_temperature <= 32 ~ 1, 
+                                            weather_temperature> 32 ~ 0))
+# get rid of push games 
+nfl.2017<- nfl.2017 %>% filter(spread_vegas != spread_actual)
+
+```
+
+
+
+```{r}
+nfl.test <- rbind(nfl.2017, nfl.2018)
+
+
+```
+
+
+```{r}
+model.final <- glm(UNDERDOGcovered ~ precipitation + spread_vegas + fav_best3 + underdog_best3 + fav_worst3 + underdog_worst3 + division_game, family = binomial, data = nfl)
+
+tidy(model.final)
+
+```
+
+Testing model on Training Set
+```{r}
+nfl <- nfl %>% mutate(Predicted = predict.glm(model.final, type = "response"))
+
+ROC <- roc(nfl$UNDERDOGcovered, nfl$Predicted, plot = T)
+
+ROC$auc
+
+threshold = 0.50
+
+table(nfl$UNDERDOGcovered, nfl$Predicted > threshold)
+
+(721 + 956)/ (721+956 + 820 +1105)
+```
+
+Testing model on Test Set
+```{r}
+
+nfl.test <- nfl.test %>% mutate(Predicted = predict.glm(model.final, newdata = nfl.test, type = "response"))
+
+roc.test <- roc(nfl.test$UNDERDOGcovered, nfl.test$Predicted, plot = T)
+
+roc.test$auc
+
+threshold = 0.50
+
+table(nfl.test$UNDERDOGcovered, nfl.test$Predicted > threshold)
+
+(79+84)/ (79+84+98+113)
+
+```
+
+```{r}
+nfl <- nfl %>% mutate(YesNo = case_when(Predicted <0.500000 ~ 0, Predicted >= 0.50000000 ~1))
+nfl <-nfl %>% mutate(CorrectPred = case_when(UNDERDOGcovered == YesNo ~ 1, UNDERDOGcovered != YesNo ~ 0))
+
+nfl <- nfl %>% mutate(Residuals = residuals.glm(model.final,type="response"))
+
+binnedplot(nfl$Predicted, nfl$Residuals,xlab="Predicted Probabilities",ylab="Residuals",main="Binned Residuals vs. Predicted Probabilities")
+                         
+binnedplot(nfl$spread_vegas, nfl$Residuals,xlab="Vegas Spread",ylab="Residuals",main="Binned Residuals vs. spread_vegas")
+
+
+# Categorical Variables
+
+```
+
+
+Exploratory Data analysis
+```{r}
+binnedplot(nfl$spread_vegas, nfl$UNDERDOGcovered,xlab="Vegas Spread Amount",ylab="Covered or Not",main="Underdog Covering Spread vs Vegas Spread", )
+
+nfl <- nfl %>% mutate(UNDERDOGcovered = as.factor(UNDERDOGcovered))
+
+ggplot(data=nfl,aes(x=precipitation,y=UNDERDOGcovered,fill=UNDERDOGcovered)) +geom_bar(stat="identity") + labs(title="Precipitation vs Covered Spread", x="Precipitation", y ="Underdog Covered Spread") 
+
+
+ggplot(data=nfl,aes(x=fav_best3,y=UNDERDOGcovered,fill=UNDERDOGcovered)) +geom_bar(stat="identity") + 
+  labs(title="Favorite is Top 3 Team vs Covered Spread", x="Favorite is Top 3 Team", y = "Underdog Covered Spread")
+
+ggplot(data=nfl,aes(x=underdog_best3,y=UNDERDOGcovered,fill=UNDERDOGcovered)) +geom_bar(stat="identity") + 
+  labs(title="Underdog is Top 3 Team vs Covered Spread", x="Underdog is Top 3 Team", y = "Underdog Covered Spread")
+
+ggplot(data=nfl,aes(x=fav_worst3,y=UNDERDOGcovered,fill=UNDERDOGcovered)) +geom_bar(stat="identity") + 
+  labs(title="Favorite is Worst 3 Team vs Covered Spread", x="Favorite is Worst 3 Team", y = "Underdog Covered Spread")
+
+ggplot(data=nfl,aes(x=underdog_worst3,y=UNDERDOGcovered,fill=UNDERDOGcovered)) +geom_bar(stat="identity") + 
+  labs(title="Underdog Worst 3 Team vs Covered Spread", x="Underdog is Worst 3 Team", y = "Underdog Covered Spread")
+
+```
+
+
+
