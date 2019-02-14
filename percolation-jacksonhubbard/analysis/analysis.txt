@@ -1,0 +1,76 @@
+Your name
+Your netid
+
+Copy/Paste results from PercolationStats using PercolationDFS 
+		Piazza said dont do
+
+
+Copy/Paste results from PercolationStats using PercolationDFSFast
+simulation data for 20 trials
+grid	mean	stddev	time
+100	0.593	0.014	0.181
+200	0.591	0.010	0.159
+400	0.590	0.006	0.998
+800	0.594	0.004	7.053
+Exception in thread "main" java.lang.StackOverflowError
+	at PercolationDFS.dfs(PercolationDFS.java:109)
+	
+	
+
+Copy/Paste results from PercolationStats using PercolationBFS
+simulation data for 20 trials
+grid	mean	stddev	time
+100	0.593	0.014	0.368
+200	0.591	0.010	0.486
+400	0.590	0.006	1.201
+800	0.594	0.004	6.263
+1600	0.592	0.002	37.811
+3200	0.593	0.001	235.766
+
+
+Copy/Paste results from PercolationStats using PercolationUF 
+with the QuickUWPC UnionFind implementation.
+simulation data for 20 trials
+grid	mean	stddev	time
+100	0.593	0.014	0.230
+200	0.591	0.010	0.331
+400	0.590	0.006	0.715
+800	0.594	0.004	4.728
+1600	0.592	0.002	25.053
+3200	0.593	0.001	361.114
+
+
+
+1. How does doubling the grid size affect running time (keeping # trials fixed)
+Doubling the grid size has an effect on the runtime. As we go from a grid size of
+100 to a gird size of 200, the time roughly doubles, as well as from 200 to 400. 
+However, as we keep going doubling the grid size has more of an effect. As we go from
+400 to 800 and 800 to 1600 doubling the grid has an 7-9 times effect on time. Finally 
+doubling from 16,000 to 32,000 has a much larger effect of about 15 times. Thus, it is 
+an exponential relationship
+
+
+
+2. How does doubling the number of trials affect running time.
+
+simulation data for 40 trials
+grid	mean	stddev	time
+100	0.594	0.015	0.192
+200	0.591	0.009	0.275
+400	0.591	0.005	1.637
+800	0.593	0.004	10.087
+1600	0.593	0.002	48.175
+3200	0.593	0.001	576.000
+
+Doubling the number of trials seems to make the run time a lot slower. As we compare the 
+results of trials = 20 to trials =40 we see doubling the number of trials has an effect
+of about doubling each of the runtimes for each respective grid size. 
+
+
+
+3. Estimate the largest grid size you can run in 24 hours with 20 trials. Explain your reasoning.
+The largest grid size I can run in 24 hours with 20 trials is about 771,895.
+Using the data from PercolationStats using PercolationUF, I plotted them on a graph and found
+an exponential line of best fit. This equation was y = 0.112x - 52.254. Plugging in 86400 
+(60 sec/min * 60 min/hr * 24 hrs) for y and solving for x results in 771895.125. 
+
